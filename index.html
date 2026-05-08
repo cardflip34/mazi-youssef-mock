@@ -3251,14 +3251,14 @@ window.MAZI_TRUSTED_PAYLOAD = {"schema":"mazi_whatnot_trusted_v1","generated_at"
     function swapTo(src) {
       imgEl.onerror = function () {
         imgEl.onerror = null;
-        imgEl.src = placeholderSVG(displayName(card), card.id);
+        imgEl.src = placeholderSVG(displayName(card), card);
       };
       imgEl.src = src;
     }
     frontBtn.addEventListener('click', () => {
       frontBtn.classList.add('is-active');
       backBtn.classList.remove('is-active');
-      swapTo(card.imageFront || placeholderSVG(displayName(card), card.id));
+      swapTo(card.imageFront || placeholderSVG(displayName(card), card));
     });
     backBtn.addEventListener('click', () => {
       backBtn.classList.add('is-active');
@@ -3463,33 +3463,133 @@ window.MAZI_TRUSTED_PAYLOAD = {"schema":"mazi_whatnot_trusted_v1","generated_at"
     return out.join(' ');
   }
 
-  // SVG fallback when a card image asset is missing on disk.
-  // Hue is derived from the card name so each placeholder feels distinct.
-  function placeholderSVG(text, hueSeed = '') {
-    const safe = String(text || 'CARD').slice(0, 32);
-    let hue = 220;
-    for (let i = 0; i < hueSeed.length; i++) hue = (hue + hueSeed.charCodeAt(i)) % 360;
+  // Self-contained SVG card visual used when no real image asset is present.
+  // Renders a synthetic trading-card composition: team-color frame, refractor
+  // sheen, sport pictogram, faded jersey number, initials medallion, brand
+  // strip, name plate, optional grade/RC/AUTO chips, and a "MAZI MOCK"
+  // watermark. Accepts either a card object (preferred) or a hue-seed string
+  // for legacy callers.
+  function placeholderSVG(text, seedOrCard) {
+    const card = (seedOrCard && typeof seedOrCard === 'object') ? seedOrCard : null;
+    const seed = card ? String(card.id || card.cardName || card._k || '') : String(seedOrCard || '');
+    const playerName = String(text || 'CARD').slice(0, 32);
+
+    const sportHues = {
+      football: 18, basketball: 32, baseball: 215, soccer: 140,
+      pokemon: 50, hockey: 200, ufc: 0, veefriends: 285,
+    };
+    let h = (card && sportHues[card.sport] != null) ? sportHues[card.sport] : 220;
+    for (let i = 0; i < seed.length; i++) h = (h + seed.charCodeAt(i)) % 360;
+    const h2 = (h + 35) % 360;
+    const h3 = (h + 200) % 360;
+
+    const parts = playerName.replace(/[^A-Za-z .'-]/g, '').split(/\s+/).filter(Boolean);
+    let initials;
+    if (parts.length >= 2) initials = (parts[0][0] || '') + (parts[parts.length - 1][0] || '');
+    else if (parts.length === 1) initials = parts[0].slice(0, 2);
+    else initials = 'MX';
+    initials = initials.toUpperCase();
+
+    let jersey = 0;
+    for (let i = 0; i < seed.length; i++) jersey = ((jersey * 31) + seed.charCodeAt(i)) >>> 0;
+    jersey = (jersey % 98) + 1;
+
+    const sportIcons = {
+      football: "M150 196 q-44 0 -44 -32 t44 -32 t44 32 t-44 32 z m-16 -28 h32 m-26 -8 v16 m52 -8 h-26",
+      basketball: "M150 200 m-38 0 a38 38 0 1 0 76 0 a38 38 0 1 0 -76 0 m0 0 h76 m-38 -38 v76 m-30 -28 q30 -10 60 0 m0 -20 q-30 10 -60 0",
+      baseball: "M150 200 m-34 0 a34 34 0 1 0 68 0 a34 34 0 1 0 -68 0 m-22 -16 q22 4 44 0 m-44 32 q22 -4 44 0",
+      soccer: "M150 200 m-36 0 a36 36 0 1 0 72 0 a36 36 0 1 0 -72 0 m-22 -14 l22 -16 l22 16 l-8 24 l-28 0 z",
+      pokemon: "M150 200 m-36 0 a36 36 0 1 0 72 0 a36 36 0 1 0 -72 0 m-36 0 h72 m-36 -10 a10 10 0 1 0 0.01 0",
+      hockey: "M150 198 m-32 -8 a32 10 0 1 0 64 0 a32 10 0 1 0 -64 0 m32 -8 v-30 l16 -10",
+      ufc: "M138 174 q-10 0 -10 12 v28 q0 14 12 14 h20 q12 0 12 -14 v-30 q0 -10 -10 -10 h-12 q-6 -8 -12 0 z",
+      veefriends: "M150 200 q-30 -28 0 -50 q30 22 0 50 z",
+    };
+    const iconPath = (card && sportIcons[card.sport]) || sportIcons.basketball;
+
+    const parallel = (card && card.parallel) ? String(card.parallel) : '';
+    const isRefractor = /refractor|prizm|chrome|holo|mojo|hyper|ice|silver|rainbow|optic/i.test(parallel) || /chrome|prizm|optic|mosaic/i.test((card && card.set) || '');
+    const isGold = /gold|orange/i.test(parallel);
+    const isRed = /red/i.test(parallel);
+    const isBlack = /black/i.test(parallel);
+
+    const accent = isGold ? 'hsl(45,90%,58%)'
+                  : isRed ? 'hsl(0,80%,58%)'
+                  : isBlack ? 'hsl(0,0%,80%)'
+                  : `hsl(${h2},78%,62%)`;
+
+    const year = (card && card.year) ? String(card.year) : '';
+    const brand = ((card && card.set) ? String(card.set) : 'MAZI').toUpperCase().slice(0, 22);
+    const cardNum = '#' + String(jersey).padStart(2, '0');
+    const sportLabel = (card && card.sport) ? String(card.sport).toUpperCase() : 'COLLECTIBLE';
+    const gradeChip = (card && card.gradeChip) ? String(card.gradeChip) : '';
+    const isRookie = !!(card && card.rookie);
+    const isAuto = !!(card && card.auto);
+    const numbered = (card && card.numbered) ? String(card.numbered) : '';
+
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const refractorStops = isRefractor
+      ? `<stop offset='0' stop-color='#ff5b87'/><stop offset='0.25' stop-color='#ffd166'/><stop offset='0.5' stop-color='#06d6a0'/><stop offset='0.75' stop-color='#118ab2'/><stop offset='1' stop-color='#9b5de5'/>`
+      : `<stop offset='0' stop-color='hsl(${h2},80%,72%)' stop-opacity='0.5'/><stop offset='1' stop-color='hsl(${h3},70%,40%)' stop-opacity='0'/>`;
+
+    const subtitle = sportLabel + (parallel ? (' · ' + parallel.toUpperCase().slice(0, 14)) : '');
+
     const svg =
       `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 420'>` +
-        `<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>` +
-        `<stop offset='0' stop-color='hsl(${hue},55%,28%)'/>` +
-        `<stop offset='1' stop-color='hsl(${(hue + 50) % 360},65%,16%)'/>` +
-        `</linearGradient></defs>` +
-        `<rect width='300' height='420' rx='16' fill='url(#g)'/>` +
-        `<rect x='14' y='14' width='272' height='392' rx='10' fill='none' stroke='rgba(255,255,255,0.16)'/>` +
-        `<text x='150' y='220' font-family='Inter,Arial' font-size='17' font-weight='700' ` +
-        `fill='white' text-anchor='middle'>` +
-          safe.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
-        `</text>` +
-        `<text x='150' y='248' font-family='Inter,Arial' font-size='11' letter-spacing='2' ` +
-        `fill='rgba(255,255,255,0.55)' text-anchor='middle'>MAZI</text>` +
+        `<defs>` +
+          `<linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>` +
+            `<stop offset='0' stop-color='hsl(${h},65%,34%)'/>` +
+            `<stop offset='1' stop-color='hsl(${h3},72%,12%)'/>` +
+          `</linearGradient>` +
+          `<linearGradient id='ref' x1='0' y1='0' x2='1' y2='1' gradientTransform='rotate(20)'>` +
+            refractorStops +
+          `</linearGradient>` +
+          `<radialGradient id='spot' cx='0.5' cy='0.42' r='0.55'>` +
+            `<stop offset='0' stop-color='rgba(255,255,255,0.42)'/>` +
+            `<stop offset='1' stop-color='rgba(255,255,255,0)'/>` +
+          `</radialGradient>` +
+          `<pattern id='dots' x='0' y='0' width='8' height='8' patternUnits='userSpaceOnUse'>` +
+            `<circle cx='2' cy='2' r='1' fill='rgba(255,255,255,0.07)'/>` +
+          `</pattern>` +
+          `<pattern id='lines' x='0' y='0' width='10' height='10' patternUnits='userSpaceOnUse' patternTransform='rotate(45)'>` +
+            `<rect width='4' height='10' fill='rgba(255,255,255,0.07)'/>` +
+          `</pattern>` +
+        `</defs>` +
+        `<rect width='300' height='420' rx='14' fill='url(#bg)'/>` +
+        `<rect width='300' height='420' rx='14' fill='url(#dots)'/>` +
+        `<rect width='300' height='420' rx='14' fill='url(#lines)' opacity='0.55'/>` +
+        `<rect width='300' height='420' rx='14' fill='url(#spot)'/>` +
+        `<rect x='6' y='6' width='288' height='408' rx='10' fill='url(#ref)' opacity='${isRefractor ? 0.42 : 0.22}'/>` +
+        `<rect x='10' y='10' width='280' height='400' rx='10' fill='none' stroke='${accent}' stroke-width='1.6' opacity='0.9'/>` +
+        `<rect x='14' y='14' width='272' height='392' rx='8' fill='none' stroke='rgba(255,255,255,0.18)'/>` +
+        `<rect x='22' y='22' width='256' height='30' rx='4' fill='rgba(0,0,0,0.48)'/>` +
+        (year ? `<text x='32' y='42' font-family='Inter,Arial,sans-serif' font-size='12' font-weight='800' fill='${accent}' letter-spacing='1.5'>${esc(year)}</text>` : '') +
+        `<text x='${year ? 70 : 32}' y='42' font-family='Inter,Arial,sans-serif' font-size='12' font-weight='700' fill='white' letter-spacing='0.5'>${esc(brand)}</text>` +
+        `<text x='268' y='42' font-family='Inter,Arial,sans-serif' font-size='11' font-weight='700' fill='rgba(255,255,255,0.78)' text-anchor='end' letter-spacing='1'>${esc(cardNum)}</text>` +
+        `<text x='150' y='256' font-family='Inter,Arial,sans-serif' font-size='180' font-weight='900' fill='rgba(255,255,255,0.08)' text-anchor='middle' letter-spacing='-6'>${esc(String(jersey))}</text>` +
+        `<g stroke='rgba(255,255,255,0.88)' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round' opacity='0.78'>` +
+          `<path d='${iconPath}'/>` +
+        `</g>` +
+        `<g transform='translate(150 158)'>` +
+          `<circle r='38' fill='rgba(0,0,0,0.48)' stroke='${accent}' stroke-width='2'/>` +
+          `<text y='12' font-family='Inter,Arial,sans-serif' font-size='34' font-weight='900' fill='white' text-anchor='middle' letter-spacing='-1'>${esc(initials)}</text>` +
+        `</g>` +
+        `<rect x='14' y='332' width='272' height='74' rx='8' fill='rgba(0,0,0,0.62)'/>` +
+        `<rect x='14' y='332' width='6' height='74' rx='2' fill='${accent}'/>` +
+        `<text x='150' y='362' font-family='Inter,Arial,sans-serif' font-size='17' font-weight='800' fill='white' text-anchor='middle' letter-spacing='0.4'>${esc(playerName.toUpperCase().slice(0, 24))}</text>` +
+        `<text x='150' y='382' font-family='Inter,Arial,sans-serif' font-size='10' font-weight='600' fill='rgba(255,255,255,0.7)' text-anchor='middle' letter-spacing='3'>${esc(subtitle.slice(0, 36))}</text>` +
+        (numbered ? `<text x='278' y='396' font-family='Inter,Arial,sans-serif' font-size='10' font-weight='700' fill='${accent}' text-anchor='end' letter-spacing='1'>${esc(numbered)}</text>` : '') +
+        (gradeChip ? `<g transform='translate(28 64)'><rect width='66' height='22' rx='4' fill='${accent}'/><text x='33' y='16' font-family='Inter,Arial,sans-serif' font-size='11' font-weight='800' fill='#0b0b0b' text-anchor='middle' letter-spacing='1'>${esc(gradeChip)}</text></g>` : '') +
+        (isRookie ? `<g transform='translate(248 60)'><rect x='-22' y='0' width='44' height='22' rx='11' fill='#ffd166' stroke='#0b0b0b' stroke-width='1'/><text y='16' font-family='Inter,Arial,sans-serif' font-size='11' font-weight='900' fill='#0b0b0b' text-anchor='middle' letter-spacing='1'>RC</text></g>` : '') +
+        (isAuto ? `<g transform='translate(28 ${gradeChip ? 96 : 64})'><rect width='44' height='18' rx='3' fill='rgba(255,255,255,0.92)'/><text x='22' y='13' font-family='Inter,Arial,sans-serif' font-size='10' font-weight='800' fill='#0b0b0b' text-anchor='middle' letter-spacing='1'>AUTO</text></g>` : '') +
+        `<text x='282' y='416' font-family='Inter,Arial,sans-serif' font-size='7' font-weight='700' fill='rgba(255,255,255,0.55)' text-anchor='end' letter-spacing='2'>MAZI MOCK</text>` +
       `</svg>`;
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 
   // Wrap an <img> source so missing asset files fall back to an SVG placeholder.
   function imgSrc(card) {
-    return card && card.imageFront ? card.imageFront : placeholderSVG(displayName(card), card?.id);
+    return card && card.imageFront ? card.imageFront : placeholderSVG(displayName(card), card);
   }
 
   // Two-stage runtime fallback (Task 4 PATH C, defense-in-depth):
@@ -3526,7 +3626,7 @@ window.MAZI_TRUSTED_PAYLOAD = {"schema":"mazi_whatnot_trusted_v1","generated_at"
       }
       if (stage >= 2) {
         imgEl.removeEventListener('error', onErr);
-        imgEl.src = placeholderSVG(displayName(card), card && card.id);
+        imgEl.src = placeholderSVG(displayName(card), card);
       }
     });
   }
@@ -4612,7 +4712,7 @@ window.MAZI_TRUSTED_PAYLOAD = {"schema":"mazi_whatnot_trusted_v1","generated_at"
         if (alt && alt !== img.src) { img.src = alt; return; }
       }
       img.removeEventListener('error', onErr);
-      img.src = placeholderSVG(displayName(parent), parent && parent.id);
+      img.src = placeholderSVG(displayName(parent), parent);
     });
 
     // position
@@ -4735,7 +4835,7 @@ window.MAZI_TRUSTED_PAYLOAD = {"schema":"mazi_whatnot_trusted_v1","generated_at"
       heroWrap.className = 'gallery';
       const heroImg = document.createElement('img');
       const useImg = (sale && sale.imageFront) || card.imageFront;
-      heroImg.src = useImg || placeholderSVG(cardName, card.id);
+      heroImg.src = useImg || placeholderSVG(cardName, card);
       // Hand off to the two-stage fallback when a primary URL exists.
       if (useImg) attachImgFallback(heroImg, card);
       heroImg.alt = cardName;
